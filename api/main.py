@@ -3,7 +3,7 @@ from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
 from pathlib import Path
 from datetime import datetime
 
-from api.models import OCRRequest, OCRResponse
+from api.models import OCRRequest, OCRResponse, NationalIDResponse, NationalIDData, NATIONAL_ID_JSON_SCHEMA
 from api.utils import (
     bytes_to_base64,
     extract_text_and_images_from_pdf,
@@ -145,6 +145,65 @@ async def ocr_unified_endpoint(
         return await ocr_pdf_endpoint(request_data, file)
     else:
         return await ocr_image_endpoint(request_data, file)
+
+
+@app.post("/ocr/national_id", response_model=NationalIDResponse)
+async def ocr_national_id_endpoint(
+    file: UploadFile = File(...),
+):
+    """
+    OCR endpoint for National ID cards with structured output.
+    Returns validated JSON matching NationalIDData schema.
+    """
+    try:
+        contents = await file.read()
+        
+        # Convert to base64
+        image_base64 = bytes_to_base64(contents, max_size=512)
+
+        system_prompt = """You are an OCR assistant specialized in extracting information from National ID cards.
+Extract all fields from the ID card image and return ONLY valid JSON matching the required schema.
+Do not include any explanations or additional text outside the JSON object."""
+
+        prompt = """Extract the following fields from this National ID card image:
+- nationality
+- sex (M or F)
+- surname (in original script)
+- given_name (in original script)
+- mother_name
+- father_name
+- date_of_birth (format: YYYY-MM-DD)
+- date_of_issue (format: DD-MM-YYYY)
+- national_id_number
+- signature (or "N/A" if not visible)
+
+Return ONLY the JSON object."""
+
+        # Send request with structured output
+        response_text = await send_chat_completion_request(
+            prompt,
+            images_base64=[image_base64],
+            system_prompt=system_prompt,
+            response_format=NATIONAL_ID_JSON_SCHEMA,
+        )
+        
+        # Parse and validate response
+        import json
+        data = json.loads(response_text)
+        validated_data = NationalIDData(**data)
+        
+        # Save output
+        save_output(response_text, prefix="national_id")
+
+        return NationalIDResponse(
+            filename=file.filename,
+            data=validated_data,
+        )
+
+    except json.JSONDecodeError as e:
+        raise HTTPException(status_code=500, detail=f"Failed to parse structured output: {str(e)}")
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 if __name__ == "__main__":
