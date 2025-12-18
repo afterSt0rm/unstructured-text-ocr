@@ -4,23 +4,32 @@ from pydantic import BaseModel
 
 
 DEFAULT_SYSTEM_PROMPT = """Act as an OCR assistant. Analyze the provided image to do requirements:
-   - Recognize and Extract all visible text in the image as accurately as possible without any additional explanations or comments.
-   - Ensure that the extracted text is organized and presented in a structured Markdown format.
-   - Pay close attention to maintaining the original hierarchy and formatting, includeing any headings, subheadings, lists, tables or inline text.
-   - If any text elements are ambiguous or partially readable, include them with appropriate notes or markers, such as [illegible].
-   - Preserve the spatial relationships where applicable by mimicking the document layout in Markdown.
-   - Don't omit any part of the page including headers, footers, tables, and subtext.
-   Provide only the transcription without any additional comments."""
+- Recognize and Extract all visible text in the image as accurately as possible without any additional explanations or comments.
+- Pay close attention to maintaining the original hierarchy and formatting, including any headings, subheadings, lists, tables or inline text. 
+- If any text elements are ambiguous or partially readable, include them with appropriate notes or markers, such as [illegible]. 
+- Preserve the spatial relationships where applicable by mimiching the document layout in Markdown.
+- Don't omit any part of the page including headers, footers, tables, and subtext.
+Provide only the transcription without any additional comments."""
 
 
 class OCRRequest(BaseModel):
+
     prompt: str = "What is in this image?"
     system_prompt: Optional[str] = DEFAULT_SYSTEM_PROMPT
 
     @classmethod
-    def as_form(
+    def as_form_image(
         cls,
         prompt: str = Form("What is in this image?"),
+        system_prompt: Optional[str] = Form(DEFAULT_SYSTEM_PROMPT),
+    ):
+        """Form method for image endpoint using DEFAULT_SYSTEM_PROMPT."""
+        return cls(prompt=prompt, system_prompt=system_prompt)
+
+    @classmethod
+    def as_form_pdf(
+        cls,
+        prompt: str = Form("Note down the information from the given document?"),
         system_prompt: Optional[str] = Form(
         "You are an advanced OCR assistant capable of reading dense text and multimodal documents. "
         "Your output must be strictly structured Markdown. "
@@ -37,6 +46,7 @@ class OCRRequest(BaseModel):
         "10. Do not output conversational filler."
     ),
     ):
+        """Form method for PDF endpoint with hybrid processing prompt."""
         return cls(prompt=prompt, system_prompt=system_prompt)
 
 

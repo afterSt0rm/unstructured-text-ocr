@@ -10,44 +10,94 @@ from api.utils import (
     send_chat_completion_request,
 )
 
-app = FastAPI()
+app = FastAPI(title="OCR API", description="API for OCR processing of images and PDFs")
+
+
+# Helper function to save output
+def save_output(content: str, prefix: str = "ocr") -> Path:
+    """Save OCR output to markdown file and return the path."""
+    output_dir = Path("outputs")
+    output_dir.mkdir(exist_ok=True)
+    
+    timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+    filename = f"{prefix}_output_{timestamp}.md"
+    output_path = output_dir / filename
+    
+    with open(output_path, "w", encoding="utf-8") as f:
+        f.write(content)
+    
+    print(f"✓ Saved output to: {output_path}")
+    return output_path
 
 
 @app.get("/healthcheck")
 async def healthcheck():
-    """
-    Health check endpoint to verify the API is running.
-    """
+    """Health check endpoint to verify the API is running."""
     return {"status": "healthy"}
 
 
-@app.post("/ocr", response_model=OCRResponse)
-async def ocr_endpoint(
-    request_data: OCRRequest = Depends(OCRRequest.as_form),
+@app.post("/ocr/image", response_model=OCRResponse)
+async def ocr_image_endpoint(
+    request_data: OCRRequest = Depends(OCRRequest.as_form_image),
     file: UploadFile = File(...),
 ):
     """
-    Endpoint to perform OCR on an uploaded image or PDF.
-    Accepts an image/PDF file, text prompt and an optional system prompt.
+    OCR endpoint for single images.
+    Accepts an image file, text prompt and an optional system prompt.
     """
     try:
-        # Read file contents
         contents = await file.read()
         
+        # Convert to base64
+        image_base64 = bytes_to_base64(contents, max_size=512)
+
+        # Send request to VLM
+        response_text = await send_chat_completion_request(
+            request_data.prompt,
+            images_base64=[image_base64],
+            system_prompt=request_data.system_prompt,
+        )
+        
+        save_output(response_text, prefix="image")
+
+        return OCRResponse(
+            filename=file.filename,
+            prompt=request_data.prompt,
+            system_prompt=request_data.system_prompt,
+            response=response_text,
+        )
+
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ocr/pdf", response_model=OCRResponse)
+async def ocr_pdf_endpoint(
+    request_data: OCRRequest = Depends(OCRRequest.as_form_pdf),
+    file: UploadFile = File(...),
+):
+    """
+    OCR endpoint for PDF files with hybrid processing.
+    Extracts text and embedded images, then processes each page.
+    """
+    try:
+        contents = await file.read()
+        
+        if file.content_type != "application/pdf":
+            raise HTTPException(status_code=400, detail="This endpoint only accepts PDF files")
+        
         response_texts = []
+        
+        # Extract Text + Embedded Images
+        pages = extract_text_and_images_from_pdf(contents)
+        
+        for i, (extracted_text, page_images) in enumerate(pages):
+            images_base64 = []
+            for img_bytes in page_images[:1]:
+                images_base64.append(bytes_to_base64(img_bytes, max_size=512))
 
-        if file.content_type == "application/pdf":
-            # Extract Text + Embedded Images
-            # Returns list of (text, list_of_image_bytes)
-            pages = extract_text_and_images_from_pdf(contents)
-            
-            for i, (extracted_text, page_images) in enumerate(pages):
-                images_base64 = []
-                for img_bytes in page_images[:1]:
-                     images_base64.append(bytes_to_base64(img_bytes, max_size=512))
-
-                # Prompt: Digital Text + Figures
-                hybrid_prompt = f"""Page {i+1} Content:
+            # Hybrid Prompt: Digital Text + Figures
+            hybrid_prompt = f"""Page {i+1} Content:
 ```
 {extracted_text[:4000]}
 ```
@@ -55,44 +105,19 @@ I have also attached the {len(images_base64)} key figures/images found on this p
 Please transcribe the full page content in Markdown.
 - Use the provided text trace as the source of truth for text.
 - For attached images: Provide a comprehensive visual description of the chart/figure, explaining trends or content visible in the image.
-- If the image is a logo or the same image is present on every page, do not include it in the response.
 - Format code blocks and JSON strictly with correct syntax (```json, ```python).
 - Do not hallucinate content not present in the text or images.
 {request_data.prompt}"""
-                
-                page_response = await send_chat_completion_request(
-                    hybrid_prompt,
-                    images_base64=images_base64,
-                    system_prompt=request_data.system_prompt,
-                )
-                response_texts.append(f"--- Page {i+1} ---\n{page_response}")
-        else:
-            # Assume Image
-            # Convert to base64
-            image_base64 = bytes_to_base64(contents, max_size=512)
-
-            # Send request to VLM
-            response_text = await send_chat_completion_request(
-                request_data.prompt,
-                images_base64=[image_base64], # Pass as list
+            
+            page_response = await send_chat_completion_request(
+                hybrid_prompt,
+                images_base64=images_base64,
                 system_prompt=request_data.system_prompt,
             )
-            response_texts.append(response_text)
-
+            response_texts.append(f"--- Page {i+1} ---\n{page_response}")
+        
         final_response = "\n\n".join(response_texts)
-        
-        # Auto-save to markdown file
-        output_dir = Path("outputs")
-        output_dir.mkdir(exist_ok=True)
-        
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f"ocr_output_{timestamp}.md"
-        output_path = output_dir / filename
-        
-        with open(output_path, "w", encoding="utf-8") as f:
-            f.write(final_response)
-        
-        print(f"✓ Saved output to: {output_path}")
+        save_output(final_response, prefix="pdf")
 
         return OCRResponse(
             filename=file.filename,
@@ -101,8 +126,25 @@ Please transcribe the full page content in Markdown.
             response=final_response,
         )
 
+    except HTTPException:
+        raise
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+@app.post("/ocr", response_model=OCRResponse)
+async def ocr_unified_endpoint(
+    request_data: OCRRequest = Depends(OCRRequest.as_form_pdf),
+    file: UploadFile = File(...),
+):
+    """
+    Unified OCR endpoint that auto-detects file type.
+    Routes to appropriate handler based on content type.
+    """
+    if file.content_type == "application/pdf":
+        return await ocr_pdf_endpoint(request_data, file)
+    else:
+        return await ocr_image_endpoint(request_data, file)
 
 
 if __name__ == "__main__":
