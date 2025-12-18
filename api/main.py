@@ -1,5 +1,7 @@
 import uvicorn
 from fastapi import Depends, FastAPI, File, Form, HTTPException, UploadFile
+from pathlib import Path
+from datetime import datetime
 
 from api.models import OCRRequest, OCRResponse
 from api.utils import (
@@ -78,6 +80,19 @@ Please transcribe the full page content in Markdown.
             response_texts.append(response_text)
 
         final_response = "\n\n".join(response_texts)
+        
+        # Auto-save to markdown file
+        output_dir = Path("outputs")
+        output_dir.mkdir(exist_ok=True)
+        
+        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
+        filename = f"ocr_output_{timestamp}.md"
+        output_path = output_dir / filename
+        
+        with open(output_path, "w", encoding="utf-8") as f:
+            f.write(final_response)
+        
+        print(f"✓ Saved output to: {output_path}")
 
         return OCRResponse(
             filename=file.filename,
