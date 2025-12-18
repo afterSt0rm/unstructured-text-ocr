@@ -55,3 +55,54 @@ class OCRResponse(BaseModel):
     prompt: str
     system_prompt: Optional[str]
     response: str
+
+
+class NationalIDData(BaseModel):
+    """Structured data extracted from a National ID card."""
+    nationality: str
+    sex: str
+    surname: str
+    given_name: str
+    mother_name: str
+    father_name: str
+    date_of_birth: str
+    date_of_issue: str
+    national_id_number: str
+    signature: str = "N/A"
+
+
+class NationalIDResponse(BaseModel):
+    """Response model for National ID extraction endpoint."""
+    filename: str
+    data: NationalIDData
+
+
+# JSON Schema for structured output (used with llama.cpp response_format)
+NATIONAL_ID_JSON_SCHEMA = {
+    "type": "json_schema",
+    "json_schema": {
+        "name": "national_id",
+        "strict": True,
+        "schema": {
+            "type": "object",
+            "properties": {
+                "nationality": {"type": "string"},
+                "sex": {"type": "string"},
+                "surname": {"type": "string"},
+                "given_name": {"type": "string"},
+                "mother_name": {"type": "string"},
+                "father_name": {"type": "string"},
+                "date_of_birth": {"type": "string"},
+                "date_of_issue": {"type": "string"},
+                "national_id_number": {"type": "string"},
+                "signature": {"type": "string"}
+            },
+            "required": [
+                "nationality", "sex", "surname", "given_name",
+                "mother_name", "father_name", "date_of_birth",
+                "date_of_issue", "national_id_number", "signature"
+            ],
+            "additionalProperties": False
+        }
+    }
+}
