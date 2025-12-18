@@ -60,7 +60,7 @@ Please transcribe the full page content in Markdown.
 - Do not hallucinate content not present in the text or images.
 {request_data.prompt}"""
                 
-                page_response = send_chat_completion_request(
+                page_response = await send_chat_completion_request(
                     hybrid_prompt,
                     images_base64=images_base64,
                     system_prompt=request_data.system_prompt,
@@ -72,7 +72,7 @@ Please transcribe the full page content in Markdown.
             image_base64 = bytes_to_base64(contents, max_size=512)
 
             # Send request to VLM
-            response_text = send_chat_completion_request(
+            response_text = await send_chat_completion_request(
                 request_data.prompt,
                 images_base64=[image_base64], # Pass as list
                 system_prompt=request_data.system_prompt,
