@@ -1,11 +1,11 @@
 import base64
 import io
 import os
-from typing import List
+from typing import List, Tuple
 
+import fitz  # PyMuPDF
 import requests
 from dotenv import load_dotenv
-from pdf2image import convert_from_bytes
 from PIL import Image
 
 load_dotenv()
@@ -25,7 +25,7 @@ def bytes_to_base64(image_bytes: bytes, max_size: int = 1024) -> str:
         # Convert to JPEG bytes
         with io.BytesIO() as buffer:
             image = image.convert("RGB")  # Ensure RGB for JPEG
-            image.save(buffer, format="JPEG", quality=85)
+            image.save(buffer, format="JPEG", quality=75)
             resized_bytes = buffer.getvalue()
 
         return (
@@ -45,30 +45,78 @@ def pil_to_bytes(image: Image.Image) -> bytes:
 
 
 def convert_pdf_to_images(pdf_bytes: bytes) -> List[bytes]:
-    """Convert PDF bytes to a list of JPEG image bytes."""
+    """Convert PDF bytes to a list of JPEG image bytes (Legacy)."""
+    from pdf2image import convert_from_bytes
     images = convert_from_bytes(pdf_bytes)
     return [pil_to_bytes(img) for img in images]
 
 
+def extract_text_and_images_from_pdf(pdf_bytes: bytes) -> List[Tuple[str, List[bytes]]]:
+    """
+    Extract text and embedded images from PDF bytes.
+    Returns a list of tuples: (extracted_text, list_of_image_bytes)
+    """
+    doc = fitz.open(stream=pdf_bytes, filetype="pdf")
+    results = []
+    
+    for page in doc:
+        # 1. Extract Text
+        text = page.get_text()
+        
+        # 2. Extract Embedded Images
+        image_list = page.get_images()
+        page_images = []
+        
+        for img in image_list:
+            xref = img[0]
+            base_image = doc.extract_image(xref)
+            image_bytes = base_image["image"]
+            
+            # Simple Filter: Ignore small icons/logos (< 150px both dims)
+            # We need PIL to check size efficiently
+            try:
+                pil_img = Image.open(io.BytesIO(image_bytes))
+                width, height = pil_img.size
+                if width >= 150 and height >= 150:
+                     # Store as tuple (area, bytes) for sorting
+                     area = width * height
+                     page_images.append((area, image_bytes))
+            except Exception:
+                continue
+        
+        # Sort by area descending (Largest first)
+        page_images.sort(key=lambda x: x[0], reverse=True)
+        # Return only bytes
+        sorted_images = [img[1] for img in page_images]
+        
+        results.append((text, sorted_images))
+        
+    return results
+
+
 def send_chat_completion_request(
     instruction: str,
-    image_base64_url: str,
+    images_base64: List[str] = None,
     base_url: str = BASE_URL,
     system_prompt: str = None,
 ) -> str:
     """Send a chat completion request to the VLM."""
+    
+    content = [{"type": "text", "text": instruction}]
+    
+    if images_base64:
+        for img_b64 in images_base64:
+             content.append({
+                "type": "image_url",
+                "image_url": {
+                    "url": img_b64,
+                },
+            })
+
     messages = [
         {
             "role": "user",
-            "content": [
-                {"type": "text", "text": instruction},
-                {
-                    "type": "image_url",
-                    "image_url": {
-                        "url": image_base64_url,
-                    },
-                },
-            ],
+            "content": content,
         }
     ]
 
@@ -79,10 +127,9 @@ def send_chat_completion_request(
         f"{base_url}/v1/chat/completions",
         headers={"Content-Type": "application/json"},
         json={
-            "max_tokens": 1000,
             "messages": messages,
         },
-        timeout=60,  # Add timeout to prevent hanging connections
+        timeout=600  # Add timeout to prevent hanging connections
     )
 
     if not response.ok:
