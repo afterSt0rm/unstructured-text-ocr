@@ -132,21 +132,6 @@ Please transcribe the full page content in Markdown.
         raise HTTPException(status_code=500, detail=str(e))
 
 
-@app.post("/ocr", response_model=OCRResponse)
-async def ocr_unified_endpoint(
-    request_data: OCRRequest = Depends(OCRRequest.as_form_pdf),
-    file: UploadFile = File(...),
-):
-    """
-    Unified OCR endpoint that auto-detects file type.
-    Routes to appropriate handler based on content type.
-    """
-    if file.content_type == "application/pdf":
-        return await ocr_pdf_endpoint(request_data, file)
-    else:
-        return await ocr_image_endpoint(request_data, file)
-
-
 @app.post("/ocr/national_id", response_model=NationalIDResponse)
 async def ocr_national_id_endpoint(
     file: UploadFile = File(...),
