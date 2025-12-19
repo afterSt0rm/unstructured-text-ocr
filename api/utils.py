@@ -8,6 +8,8 @@ from dotenv import load_dotenv
 from openai import AsyncOpenAI
 from PIL import Image
 
+from api.models import NationalIDData
+
 load_dotenv()
 
 # OpenAI client configuration
@@ -15,6 +17,18 @@ client = AsyncOpenAI(
     api_key=os.getenv("OPENAI_API_KEY", "sk-no-key-required"),
     base_url=os.getenv("OPENAI_BASE_URL", "http://127.0.0.1:8081/v1"),
 )
+
+
+def get_national_id_json_schema() -> dict:
+    """Generate JSON schema for structured output using Pydantic's model_json_schema()."""
+    return {
+        "type": "json_schema",
+        "json_schema": {
+            "name": "national_id",
+            "strict": True,
+            "schema": NationalIDData.model_json_schema(),
+        },
+    }
 
 
 def bytes_to_base64(image_bytes: bytes, max_size: int = 1024) -> str:
@@ -51,6 +65,7 @@ def pil_to_bytes(image: Image.Image) -> bytes:
 def convert_pdf_to_images(pdf_bytes: bytes) -> List[bytes]:
     """Convert PDF bytes to a list of JPEG image bytes (Legacy)."""
     from pdf2image import convert_from_bytes
+
     images = convert_from_bytes(pdf_bytes)
     return [pil_to_bytes(img) for img in images]
 
@@ -62,39 +77,39 @@ def extract_text_and_images_from_pdf(pdf_bytes: bytes) -> List[Tuple[str, List[b
     """
     doc = fitz.open(stream=pdf_bytes, filetype="pdf")
     results = []
-    
+
     for page in doc:
         # 1. Extract Text
         text = page.get_text()
-        
+
         # 2. Extract Embedded Images
         image_list = page.get_images()
         page_images = []
-        
+
         for img in image_list:
             xref = img[0]
             base_image = doc.extract_image(xref)
             image_bytes = base_image["image"]
-            
+
             # Simple Filter: Ignore small icons/logos (< 150px both dims)
             # We need PIL to check size efficiently
             try:
                 pil_img = Image.open(io.BytesIO(image_bytes))
                 width, height = pil_img.size
                 if width >= 150 and height >= 150:
-                     # Store as tuple (area, bytes) for sorting
-                     area = width * height
-                     page_images.append((area, image_bytes))
+                    # Store as tuple (area, bytes) for sorting
+                    area = width * height
+                    page_images.append((area, image_bytes))
             except Exception:
                 continue
-        
+
         # Sort by area descending (Largest first)
         page_images.sort(key=lambda x: x[0], reverse=True)
         # Return only bytes
         sorted_images = [img[1] for img in page_images]
-        
+
         results.append((text, sorted_images))
-        
+
     return results
 
 
@@ -105,17 +120,19 @@ async def send_chat_completion_request(
     response_format: dict = None,
 ) -> str:
     """Send an async chat completion request using OpenAI client."""
-    
+
     content = [{"type": "text", "text": instruction}]
-    
+
     if images_base64:
         for img_b64 in images_base64:
-             content.append({
-                "type": "image_url",
-                "image_url": {
-                    "url": img_b64,
-                },
-            })
+            content.append(
+                {
+                    "type": "image_url",
+                    "image_url": {
+                        "url": img_b64,
+                    },
+                }
+            )
 
     messages = [
         {
@@ -134,11 +151,11 @@ async def send_chat_completion_request(
             "messages": messages,
             "timeout": 600.0,
         }
-        
+
         # Add response_format if provided (for structured output)
         if response_format:
             request_kwargs["response_format"] = response_format
-        
+
         response = await client.chat.completions.create(**request_kwargs)
         return response.choices[0].message.content
     except Exception as e:
