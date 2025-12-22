@@ -10,7 +10,8 @@ st.set_page_config(page_title="OCR", layout="wide")
 DOCUMENT_TYPES = {
     "Auto Detect": "auto",
     "Image": "image",
-    "PDF": "pdf",
+    "PDF (Searchable)": "pdf",
+    "PDF (Scanned)": "scanned_pdf",
     "National ID": "national_id",
     "Offer Letter": "offer_letter",
 }
@@ -134,6 +135,9 @@ if (
                         data = {"prompt": prompt}
                     elif doc_type_key == "pdf":
                         endpoint = f"{api_base_url}/ocr/pdf"
+                        data = {"prompt": prompt}
+                    elif doc_type_key == "scanned_pdf":
+                        endpoint = f"{api_base_url}/ocr/scanned_pdf"
                         data = {"prompt": prompt}
                     elif doc_type_key == "image":
                         endpoint = f"{api_base_url}/ocr/image"
