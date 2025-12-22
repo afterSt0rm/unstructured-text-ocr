@@ -6,10 +6,7 @@ from pydantic import BaseModel, Field
 
 DEFAULT_SYSTEM_PROMPT = """Act as an OCR assistant. Analyze the provided image to do requirements:
 - Recognize and Extract all visible text in the image as accurately as possible without any additional explanations or comments.
-- Pay close attention to maintaining the original hierarchy and formatting, including any headings, subheadings, lists, tables or inline text.
 - If any text elements are ambiguous or partially readable, include them with appropriate notes or markers, such as [illegible].
-- Preserve the spatial relationships where applicable by mimiching the document layout in Markdown.
-- Don't omit any part of the page including headers, footers, tables, and subtext.
 Provide only the transcription without any additional comments."""
 
 
@@ -82,7 +79,8 @@ class OfferLetterData(BaseModel):
     """Structured data extracted from an offer letter."""
 
     course_name: str = Field(..., description="Name of the course/program")
-    remit_amount: float = Field(..., description="Amount to be remitted/paid")
+    total_tuition_amount: float = Field(..., description="Total tuition amount to be paid")
+    remit_amount: float = Field(..., description="Amount already remitted/paid")
     remit_currency: str = Field(..., description="Currency of the remit amount")
     student_name: str = Field(..., description="Name of the student")
     beneficiary_name: str = Field(
@@ -90,6 +88,10 @@ class OfferLetterData(BaseModel):
     )
     iban: Optional[str] = Field(None, description="IBAN code for the payment")
     swift: Optional[str] = Field(None, description="SWIFT code for the payment")
+    bsb: Optional[str] = Field(None, description="BSB code (for Australian bank transfers)")
+    payment_purpose: Optional[str] = Field(
+        None, description="The purpose or reference for the payment of remit amount"
+    )
     university_address: str = Field(
         ..., description="Full address of the university/beneficiary"
     )
