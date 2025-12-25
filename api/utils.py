@@ -1,8 +1,9 @@
 import base64
 import io
 import os
-from typing import List, Tuple
+from typing import List, Optional, Tuple
 
+import aiohttp
 import cv2
 import fitz  # PyMuPDF
 import numpy as np
@@ -280,3 +281,111 @@ async def send_chat_completion_request(
         return response.choices[0].message.content
     except Exception as e:
         raise Exception(f"OpenAI API request failed: {str(e)}")
+
+
+async def send_bearer_token_request(
+    api_url: str,
+    bearer_token: str,
+    prompt: str,
+    system_prompt: Optional[str] = None,
+    image: Optional[bytes] = None,
+    image_filename: Optional[str] = "image.jpg",
+    timeout: float = 600.0,
+) -> str:
+    """
+    Send an async chat completion request using Bearer token authentication
+    with multipart form data.
+
+    Args:
+        api_url: The API endpoint URL for the POST request.
+        bearer_token: The Bearer token for authentication.
+        prompt: The user prompt/instruction to send.
+        system_prompt: Optional system prompt for context.
+        image: Optional image bytes to send as multipart data.
+        image_filename: Optional filename for the image (default: "image.jpg").
+        timeout: Request timeout in seconds (default: 600.0).
+
+    Returns:
+        The response text from the API.
+
+    Raises:
+        Exception: If the API request fails.
+    """
+    headers = {
+        "Authorization": f"Bearer {bearer_token}",
+    }
+
+    try:
+        async with aiohttp.ClientSession() as session:
+            # Build multipart form data
+            form_data = aiohttp.FormData()
+            form_data.add_field("prompt", prompt)
+
+            if system_prompt:
+                form_data.add_field("system_prompt", system_prompt)
+
+            if image:
+                # Determine content type based on filename extension
+                content_type = "image/jpeg"
+                if image_filename:
+                    ext = image_filename.lower().split(".")[-1]
+                    content_type_map = {
+                        "jpg": "image/jpeg",
+                        "jpeg": "image/jpeg",
+                        "png": "image/png",
+                        "gif": "image/gif",
+                        "webp": "image/webp",
+                        "bmp": "image/bmp",
+                    }
+                    content_type = content_type_map.get(ext, "image/jpeg")
+
+                form_data.add_field(
+                    "image",
+                    image,
+                    filename=image_filename,
+                    content_type=content_type,
+                )
+
+            async with session.post(
+                api_url,
+                headers=headers,
+                data=form_data,
+                timeout=aiohttp.ClientTimeout(total=timeout),
+            ) as response:
+                if response.status != 200:
+                    error_text = await response.text()
+                    raise Exception(
+                        f"API request failed with status {response.status}: {error_text}"
+                    )
+
+                response_json = await response.json()
+
+                # Try common response formats
+                if isinstance(response_json, dict):
+                    # Check for common response keys
+                    if "content" in response_json:
+                        return response_json["content"]
+                    elif "text" in response_json:
+                        return response_json["text"]
+                    elif "response" in response_json:
+                        return response_json["response"]
+                    elif "message" in response_json:
+                        return response_json["message"]
+                    elif "choices" in response_json and response_json["choices"]:
+                        # OpenAI-like format
+                        choice = response_json["choices"][0]
+                        if isinstance(choice, dict):
+                            if "message" in choice:
+                                return choice["message"].get("content", "")
+                            elif "text" in choice:
+                                return choice["text"]
+                    elif "result" in response_json:
+                        return response_json["result"]
+
+                # If no known format, return the raw JSON as string
+                return str(response_json)
+
+    except aiohttp.ClientError as e:
+        raise Exception(f"Bearer token API request failed: {str(e)}")
+    except Exception as e:
+        raise Exception(f"Bearer token API request failed: {str(e)}")
