@@ -1,5 +1,22 @@
 # Unstructured and Structured Image to Text OCR (Optical Character Recognition)
 
+## Overview
+
+Image Text OCR is an AI-powered document processing application that extracts text from images and PDFs using Vision Language Models (VLM). The application supports both unstructured text extraction (raw OCR) and structured data extraction (JSON output with validated schemas).
+
+Built with FastAPI for the backend API and Streamlit for the frontend interface, the application leverages the Qwen3-VL vision language model running on llama.cpp server for efficient local inference.
+
+## Key Features
+
+- **Multi-format Support**: Process single images, digital PDFs, and scanned PDFs
+- **Unstructured OCR**: Extract raw text from documents with customizable prompts
+- **Structured Extraction**: Extract validated JSON data from specific document types (National ID cards, Offer Letters)
+- **Hybrid PDF Processing**: Combines text extraction with embedded image analysis for digital PDFs
+- **Parallel Processing**: Multi-page documents processed in parallel for faster results
+- **Local AI Inference**: Runs entirely on local hardware using llama.cpp server (no cloud API required) except for the Offer Letter Extraction (uses external API to due to context size constraints)
+- **REST API**: FastAPI backend with OpenAPI documentation
+- **Web Interface**: User-friendly Streamlit frontend for easy interaction
+
 ## Image Text OCR Endpoints
 
 ![Image_Text_OCR](OCR_API_Endpoints.png)
