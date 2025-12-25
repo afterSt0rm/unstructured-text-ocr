@@ -8,7 +8,8 @@
 - `/ocr/image`: OCR endpoint for single images. Accepts an image file, text prompt and an optional system prompt and provides unstructured output.
 - `/ocr/pdf`: OCR endpoint for PDF files with hybrid processing. Extracts text and embedded images, then processes each page and provides unstructured output.
 - `/ocr/national_id`: OCR endpoint for National ID cards with structured output. Returns validated JSON matching NationalIDData schema.
-- `/ocr/offer_letter`: OCR endpoint for Offer Letters with multi-page support and pre-processing. Returns validated JSON matching OfferLetterData schema.
+- `/ocr/scanned_pdf`: OCR endpoint for scanned PDFs (PDFs containing only images). Renders all pages as images and returns full transcription.
+- `/ocr/offer_letter`: OCR endpoint for Offer Letters with multi-page support. Returns validated JSON matching OfferLetterData schema.
 
 
 ## Application Architecture
